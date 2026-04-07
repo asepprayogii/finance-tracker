@@ -261,12 +261,12 @@ export default function Budget() {
           <List size={20} />
           <span>Transaksi</span>
         </button>
-        <button style={s.navFab} onClick={() => navigate("/add-transaction")}>
-          <Plus size={22} color="#fff" />
-        </button>
         <button style={s.navItem} onClick={() => navigate("/analytics")}>
           <BarChart2 size={20} />
           <span>Analytics</span>
+        </button>
+        <button style={s.navFab} onClick={() => navigate("/add-transaction")}>
+          <Plus size={22} color="#fff" />
         </button>
       </div>
     </div>
