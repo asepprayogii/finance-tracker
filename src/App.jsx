@@ -6,6 +6,8 @@ import AddTransaction from "./pages/AddTransaction"; // ← tambah ini
 import ProtectedRoute from "./components/ProtectedRoute";
 import Transactions from "./pages/Transactions"; // ← tambah ini
 import EditTransaction from "./pages/EditTransaction"; // ← tambah import
+import Analytics from "./pages/Analytics";
+import Budget from "./pages/Budget";
 
 export default function App() {
   return (
@@ -43,6 +45,22 @@ export default function App() {
           element={
             <ProtectedRoute>
               <EditTransaction />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <ProtectedRoute>
+              <Analytics />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/budget"
+          element={
+            <ProtectedRoute>
+              <Budget />
             </ProtectedRoute>
           }
         />

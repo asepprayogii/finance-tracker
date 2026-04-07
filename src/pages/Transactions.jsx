@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Wallet, TrendingUp, TrendingDown, Pencil, Trash2, List, SlidersHorizontal, X } from 'lucide-react'
+import { Plus, Wallet, TrendingUp, TrendingDown, Pencil, Trash2, List, SlidersHorizontal, X, BarChart2 } from 'lucide-react'
+
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([])
@@ -194,6 +195,10 @@ export default function Transactions() {
         <button style={s.navItemActive} onClick={() => navigate('/transactions')}>
           <List size={20} />
           <span>Transaksi</span>
+        </button>
+        <button style={s.navItem} onClick={() => navigate("/analytics")}>
+          <BarChart2 size={20} />
+          <span>Analytics</span>
         </button>
         <button style={s.navFab} onClick={() => navigate('/add-transaction')}>
           <Plus size={22} color="#fff" />
