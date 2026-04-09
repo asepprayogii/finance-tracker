@@ -17,15 +17,17 @@ export default function AddTransaction() {
   useEffect(() => { fetchCategories() }, [type])
   
   async function fetchCategories() {
-    const { data: userData } = await supabase.auth.getUser()
-    const { data } = await supabase
-      .from('categories')
-      .select('*')
-      .eq('user_id', userData.user.id)
-      .eq('type', type)
-    setCategories(data || [])
-    setCategoryId(data?.[0]?.id || '')
-  }
+  const { data: userData } = await supabase.auth.getUser()
+  const { data } = await supabase
+    .from('categories')
+    .select('*')
+    .or(`user_id.eq.${userData.user.id},is_default.eq.true`)
+    .eq('type', type)
+    .order('is_default', { ascending: false })
+    .order('name', { ascending: true })
+  setCategories(data || [])
+  setCategoryId(data?.[0]?.id || '')
+}
   
   async function handleSubmit(e) {
     e.preventDefault()

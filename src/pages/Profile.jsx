@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { User, Mail, Lock, Save, LogOut, Calendar, TrendingUp, TrendingDown, Award, Edit2, CheckCircle, Shield, Clock } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { User, Mail, Lock, Save, LogOut, Calendar, TrendingUp, TrendingDown, Award, Edit2, CheckCircle, Shield, Clock, Grid3x3, ChevronRight, Plus } from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'  // ← Tambah Link
 
 export default function Profile() {
   const [user, setUser] = useState(null)
@@ -13,9 +13,14 @@ export default function Profile() {
   const [error, setError] = useState('')
   const [editingName, setEditingName] = useState(false)
   const [stats, setStats] = useState({ total: 0, income: 0, expense: 0, since: '', savingRate: 0 })
+  const [previewCategories, setPreviewCategories] = useState([])  // ← Tambah
   const navigate = useNavigate()
 
-  useEffect(() => { fetchUser(); fetchStats(); }, [])
+  useEffect(() => { 
+    fetchUser()
+    fetchStats()
+    fetchPreviewCategories()  // ← Tambah
+  }, [])
 
   async function fetchUser() { 
     const { data } = await supabase.auth.getUser()
@@ -28,7 +33,7 @@ export default function Profile() {
     const { data } = await supabase
       .from('transactions')
       .select('type, amount, created_at')
-      .eq('user_id', userData.user.id)
+      .eq('user_id', userData.user?.id)
 
     if (data && data.length > 0) {
       const income = data.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
@@ -39,6 +44,23 @@ export default function Profile() {
       setStats({ total: data.length, income, expense, since, savingRate })
     } else {
       setStats({ total: 0, income: 0, expense: 0, since: '-', savingRate: 0 })
+    }
+  }
+
+  // ← Tambah function ini
+  async function fetchPreviewCategories() {
+    const { data: userData } = await supabase.auth.getUser()
+    if (!userData.user) return
+
+    const { data } = await supabase
+      .from('categories')
+      .select('id, name, icon, is_default')
+      .or(`user_id.eq.${userData.user.id},is_default.eq.true`)
+      .limit(6)
+      .order('is_default', { ascending: false })
+
+    if (data) {
+      setPreviewCategories(data)
     }
   }
 
@@ -211,6 +233,41 @@ export default function Profile() {
           <div style={s.quickStatItem}>
             <span style={s.quickStatNumber}>{stats.savingRate >= 0 ? 'Sehat' : 'Waspada'}</span>
             <span style={s.quickStatLabel}>Status Keuangan</span>
+          </div>
+        </div>
+
+        {/* ========== KATEGORI SECTION (BARU) ========== */}
+        <div style={s.categoriesSection}>
+          <div style={s.categoriesHeader}>
+            <h3 style={s.sectionTitle}>
+              <Grid3x3 size={18} />
+              Kelola Kategori
+            </h3>
+            <Link to="/categories" style={s.seeAllLink}>
+              Lihat Semua <ChevronRight size={14} />
+            </Link>
+          </div>
+          
+          {/* Preview Categories */}
+          <div style={s.categoriesPreview}>
+            {previewCategories.length === 0 ? (
+              <div style={s.emptyCategories}>
+                <p style={s.emptyText}>Belum ada kategori</p>
+                <Link to="/categories" style={s.addCategoryLink}>
+                  <Plus size={14} /> Tambah kategori
+                </Link>
+              </div>
+            ) : (
+              <div style={s.categoryChips}>
+                {previewCategories.map(cat => (
+                  <div key={cat.id} style={s.categoryChip}>
+                    <span style={s.categoryChipIcon}>{cat.icon || '📦'}</span>
+                    <span style={s.categoryChipName}>{cat.name}</span>
+                    {cat.is_default && <span style={s.defaultBadge}>Default</span>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -538,6 +595,78 @@ const s = {
     width: '1px',
     height: '30px',
     background: 'var(--border)',
+  },
+
+  // ========== KATEGORI SECTION STYLES (BARU) ==========
+  categoriesSection: {
+    background: 'var(--white)',
+    borderRadius: 'var(--radius-md)',
+    padding: '18px 20px',
+    marginBottom: '28px',
+    border: '1px solid var(--border)',
+  },
+  categoriesHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px',
+  },
+  seeAllLink: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '12px',
+    color: 'var(--green)',
+    textDecoration: 'none',
+  },
+  categoriesPreview: {
+    display: 'flex',
+    flexWrap: 'wrap',
+  },
+  categoryChips: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+  },
+  categoryChip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 12px',
+    background: 'var(--gray-100)',
+    borderRadius: '20px',
+    fontSize: '13px',
+  },
+  categoryChipIcon: {
+    fontSize: '14px',
+  },
+  categoryChipName: {
+    color: 'var(--gray-700)',
+  },
+  defaultBadge: {
+    fontSize: '9px',
+    padding: '2px 6px',
+    background: '#e2e8f0',
+    borderRadius: '10px',
+    color: 'var(--gray-500)',
+  },
+  emptyCategories: {
+    textAlign: 'center',
+    padding: '16px',
+    width: '100%',
+  },
+  emptyText: {
+    fontSize: '13px',
+    color: 'var(--gray-400)',
+    marginBottom: '8px',
+  },
+  addCategoryLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '12px',
+    color: 'var(--green)',
+    textDecoration: 'none',
   },
 
   // Settings Section

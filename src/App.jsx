@@ -11,6 +11,7 @@ import Analytics from "./pages/Analytics";
 import Budget from "./pages/Budget";
 import Profile from "./pages/Profile";
 import Layout from "./components/Layout";
+import Categories from "./pages/Categories";
 
 function ProtectedRoute({ children }) {
   const [loading, setLoading] = useState(true);
@@ -23,7 +24,7 @@ function ProtectedRoute({ children }) {
     });
   }, []);
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg)', color: 'var(--gray-500)' }}>Memuat...</div>;
+  if (loading) return <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", background: "var(--bg)", color: "var(--gray-500)" }}>Memuat...</div>;
   if (!session) return <Navigate to="/login" replace />;
   return <Layout>{children}</Layout>;
 }
@@ -36,13 +37,70 @@ export default function App() {
         <Route path="/register" element={<Register />} />
 
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/add-transaction" element={<ProtectedRoute><AddTransaction /></ProtectedRoute>} />
-        <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
-        <Route path="/edit-transaction/:id" element={<ProtectedRoute><EditTransaction /></ProtectedRoute>} />
-        <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
-        <Route path="/budget" element={<ProtectedRoute><Budget /></ProtectedRoute>} />
-        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/add-transaction"
+          element={
+            <ProtectedRoute>
+              <AddTransaction />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/transactions"
+          element={
+            <ProtectedRoute>
+              <Transactions />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/edit-transaction/:id"
+          element={
+            <ProtectedRoute>
+              <EditTransaction />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <ProtectedRoute>
+              <Analytics />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/budget"
+          element={
+            <ProtectedRoute>
+              <Budget />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/categories"
+          element={
+            <ProtectedRoute>
+              <Categories />
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
