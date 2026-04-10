@@ -1,107 +1,130 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { User, Mail, Lock, Save, LogOut, Calendar, TrendingUp, TrendingDown, Award, Edit2, CheckCircle, Shield, Clock, Grid3x3, ChevronRight, Plus } from 'lucide-react'
-import { useNavigate, Link } from 'react-router-dom'  // ← Tambah Link
+import {
+  LogOut, Calendar, TrendingUp, TrendingDown, Award,
+  Edit, Check, X, ChevronRight, Shield, Heart,
+  AlertTriangle, CircleAlert, Lock, Mail
+} from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'
+
+const C = {
+  primary:      '#188e63',
+  primaryLight: 'rgba(24,142,99,0.15)',
+  warning:      '#ef9f27',
+  warningLight: 'rgba(239,159,39,0.12)',
+  danger:       '#e24b4a',
+  dangerLight:  'rgba(226,75,74,0.12)',
+  text: {
+    primary:   '#0f172a',
+    secondary: '#64748b',
+    muted:     '#94a3b8',
+  },
+  bg: {
+    page:   '#f1f5f9',
+    card:   '#ffffff',
+    subtle: '#f8fafc',
+    border: '#e2e8f0',
+  },
+}
+
+async function getCurrentUser() {
+  try {
+    const res = await supabase.auth.getUser()
+    return res.data?.user || null
+  } catch { return null }
+}
+
+async function updateUserMetadata(metadata) {
+  try {
+    const res = await supabase.auth.updateUser({ user_metadata: metadata })
+    return { success: !res.error, error: res.error }
+  } catch (err) { return { success: false, error: err } }
+}
+
+async function updateUserPassword(password) {
+  try {
+    const res = await supabase.auth.updateUser({ password })
+    return { success: !res.error, error: res.error }
+  } catch (err) { return { success: false, error: err } }
+}
+
+function getFinancialStatus(income, expense, savingRate) {
+  if (income === 0 && expense === 0)
+    return { label: 'Belum Ada Data', Icon: CircleAlert, color: C.text.muted, bg: C.bg.subtle, desc: 'Mulai catat transaksi untuk melihat status' }
+  if (savingRate >= 20)
+    return { label: 'Sehat',   Icon: Heart,        color: C.primary, bg: C.primaryLight, desc: 'Pengeluaran terkendali, tabungan konsisten' }
+  if (savingRate >= 0)
+    return { label: 'Waspada', Icon: AlertTriangle, color: C.warning, bg: C.warningLight, desc: 'Pengeluaran mendekati pemasukan, evaluasi budget' }
+  return   { label: 'Kritis',  Icon: CircleAlert,   color: C.danger,  bg: C.dangerLight,  desc: 'Pengeluaran melebihi pemasukan, segera atur ulang' }
+}
+
+const formatRp = (v) =>
+  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v)
 
 export default function Profile() {
-  const [user, setUser] = useState(null)
-  const [fullName, setFullName] = useState('')
-  const [newPassword, setNewPassword] = useState('')
+  const [user,            setUser]            = useState(null)
+  const [fullName,        setFullName]        = useState('')
+  const [originalName,    setOriginalName]    = useState('')
+  const [newPassword,     setNewPassword]     = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
-  const [editingName, setEditingName] = useState(false)
-  const [stats, setStats] = useState({ total: 0, income: 0, expense: 0, since: '', savingRate: 0 })
-  const [previewCategories, setPreviewCategories] = useState([])  // ← Tambah
+  const [loading,         setLoading]         = useState(false)
+  const [notification,    setNotification]    = useState(null)
+  const [editingName,     setEditingName]     = useState(false)
+  const [stats,           setStats]           = useState({ total: 0, income: 0, expense: 0, since: '-', savingRate: 0 })
+
   const navigate = useNavigate()
 
-  useEffect(() => { 
-    fetchUser()
-    fetchStats()
-    fetchPreviewCategories()  // ← Tambah
-  }, [])
+  useEffect(() => { loadProfileData() }, [])
 
-  async function fetchUser() { 
-    const { data } = await supabase.auth.getUser()
-    setUser(data.user)
-    setFullName(data.user?.user_metadata?.full_name || '') 
+  async function loadProfileData() {
+    const u = await getCurrentUser()
+    if (!u) return
+    setUser(u)
+    const name = u.user_metadata?.full_name || ''
+    setFullName(name)
+    setOriginalName(name)
+    await fetchStats(u.id)
   }
 
-  async function fetchStats() {
-    const { data: userData } = await supabase.auth.getUser()
+  async function fetchStats(userId) {
     const { data } = await supabase
       .from('transactions')
       .select('type, amount, created_at')
-      .eq('user_id', userData.user?.id)
+      .eq('user_id', userId)
 
-    if (data && data.length > 0) {
-      const income = data.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-      const expense = data.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+    if (data?.length) {
+      const income     = data.filter(t => t.type === 'income') .reduce((s, t) => s + t.amount, 0)
+      const expense    = data.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
       const savingRate = income > 0 ? Math.round(((income - expense) / income) * 100) : 0
-      const since = new Date(Math.min(...data.map(t => new Date(t.created_at))))
-        .toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+      const firstDate  = new Date(Math.min(...data.map(t => new Date(t.created_at))))
+      const since      = firstDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
       setStats({ total: data.length, income, expense, since, savingRate })
-    } else {
-      setStats({ total: 0, income: 0, expense: 0, since: '-', savingRate: 0 })
     }
   }
 
-  // ← Tambah function ini
-  async function fetchPreviewCategories() {
-    const { data: userData } = await supabase.auth.getUser()
-    if (!userData.user) return
-
-    const { data } = await supabase
-      .from('categories')
-      .select('id, name, icon, is_default')
-      .or(`user_id.eq.${userData.user.id},is_default.eq.true`)
-      .limit(6)
-      .order('is_default', { ascending: false })
-
-    if (data) {
-      setPreviewCategories(data)
-    }
+  function notify(type, message) {
+    setNotification({ type, message })
+    setTimeout(() => setNotification(null), 4000)
   }
 
   async function handleUpdateName(e) {
     e.preventDefault()
+    if (!fullName.trim() || fullName === originalName) { setEditingName(false); return }
     setLoading(true)
-    setMessage('')
-    setError('')
-    const { error } = await supabase.auth.updateUser({ data: { full_name: fullName } })
-    if (error) {
-      setError(error.message)
-    } else {
-      setMessage('Nama berhasil diperbarui!')
-      setEditingName(false)
-      setTimeout(() => setMessage(''), 3000)
-    }
+    const res = await updateUserMetadata({ full_name: fullName.trim() })
+    if (res.success) { notify('success', 'Nama berhasil diperbarui'); setOriginalName(fullName); setEditingName(false) }
+    else notify('error', res.error?.message || 'Gagal memperbarui nama')
     setLoading(false)
   }
 
   async function handleUpdatePassword(e) {
     e.preventDefault()
-    setMessage('')
-    setError('')
-    if (newPassword !== confirmPassword) {
-      setError('Password tidak cocok!')
-      return
-    }
-    if (newPassword.length < 6) {
-      setError('Password minimal 6 karakter!')
-      return
-    }
+    if (newPassword !== confirmPassword) { notify('error', 'Password tidak cocok'); return }
+    if (newPassword.length < 6)          { notify('error', 'Password minimal 6 karakter'); return }
     setLoading(true)
-    const { error } = await supabase.auth.updateUser({ password: newPassword })
-    if (error) {
-      setError(error.message)
-    } else {
-      setMessage('Password berhasil diperbarui!')
-      setNewPassword('')
-      setConfirmPassword('')
-      setTimeout(() => setMessage(''), 3000)
-    }
+    const res = await updateUserPassword(newPassword)
+    if (res.success) { notify('success', 'Password berhasil diperbarui'); setNewPassword(''); setConfirmPassword('') }
+    else notify('error', res.error?.message || 'Gagal memperbarui password')
     setLoading(false)
   }
 
@@ -110,720 +133,345 @@ export default function Profile() {
     navigate('/login')
   }
 
-  const formatRp = (v) => new Intl.NumberFormat('id-ID', { 
-    style: 'currency', 
-    currency: 'IDR', 
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(v)
-
-  const joinDate = user?.created_at 
+  const joinDate       = user?.created_at
     ? new Date(user.created_at).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
     : '-'
+  const avatarInitial  = fullName?.trim().charAt(0)?.toUpperCase() || 'U'
+  const fs             = getFinancialStatus(stats.income, stats.expense, stats.savingRate)
 
   return (
     <div style={s.page}>
-      {/* Hero Section with Cover */}
-      <div style={s.coverSection}>
-        <div style={s.coverOverlay}></div>
-        <div style={s.profileHeader}>
-          <div style={s.avatarContainer}>
-            <div style={s.avatar}>
-              <span style={s.avatarEmoji}>{fullName ? fullName.charAt(0).toUpperCase() : '👤'}</span>
-            </div>
-          </div>
-          <div style={s.profileInfo}>
-            {editingName ? (
-              <form onSubmit={handleUpdateName} style={s.editNameForm}>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={e => setFullName(e.target.value)}
-                  style={s.editNameInput}
-                  autoFocus
-                  placeholder="Nama lengkap"
-                />
-                <button type="submit" disabled={loading} style={s.saveNameBtn}>
-                  <CheckCircle size={18} />
-                </button>
-                <button type="button" onClick={() => setEditingName(false)} style={s.cancelEditBtn}>
-                  ✕
-                </button>
-              </form>
-            ) : (
-              <div style={s.nameRow}>
-                <h1 style={s.userName}>{fullName || 'Pengguna'}</h1>
-                <button onClick={() => setEditingName(true)} style={s.editIconBtn}>
-                  <Edit2 size={14} />
-                </button>
-              </div>
-            )}
-            <div style={s.userEmail}>
-              <Mail size={14} />
-              <span>{user?.email}</span>
-            </div>
-            <div style={s.userSince}>
-              <Calendar size={12} />
-              <span>Bergabung {joinDate}</span>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Notifications */}
-      {message && (
-        <div style={s.toastSuccess}>
-          <CheckCircle size={18} />
-          {message}
-        </div>
-      )}
-      {error && (
-        <div style={s.toastError}>
-          <span>⚠️</span>
-          {error}
+      {/* TOAST */}
+      {notification && (
+        <div style={{ ...s.toast, background: notification.type === 'success' ? C.primary : C.danger }}>
+          {notification.type === 'success' ? <Check size={15} /> : <X size={15} />}
+          <span>{notification.message}</span>
         </div>
       )}
 
-      <div style={s.content}>
-        {/* Stats Grid */}
-        <div style={s.statsGrid}>
-          <div style={s.statCard}>
-            <div style={{ ...s.statIcon, background: 'var(--green-pale)' }}>
-              <TrendingUp size={18} color="var(--green)" />
-            </div>
-            <div>
-              <p style={s.statLabel}>Total Pemasukan</p>
-              <p style={{ ...s.statValue, color: 'var(--green)' }}>{formatRp(stats.income)}</p>
-            </div>
-          </div>
-          <div style={s.statCard}>
-            <div style={{ ...s.statIcon, background: 'var(--red-pale)' }}>
-              <TrendingDown size={18} color="var(--red)" />
-            </div>
-            <div>
-              <p style={s.statLabel}>Total Pengeluaran</p>
-              <p style={{ ...s.statValue, color: 'var(--red)' }}>{formatRp(stats.expense)}</p>
-            </div>
-          </div>
-          <div style={s.statCard}>
-            <div style={{ ...s.statIcon, background: '#fff8e1' }}>
-              <Award size={18} color="#f59e0b" />
-            </div>
-            <div>
-              <p style={s.statLabel}>Saving Rate</p>
-              <p style={{ ...s.statValue, color: stats.savingRate >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                {stats.savingRate >= 0 ? '+' : ''}{stats.savingRate}%
-              </p>
-            </div>
-          </div>
-        </div>
+      <main style={s.content}>
 
-        {/* Quick Stats */}
-        <div style={s.quickStats}>
-          <div style={s.quickStatItem}>
-            <span style={s.quickStatNumber}>{stats.total}</span>
-            <span style={s.quickStatLabel}>Total Transaksi</span>
+        {/* ── CARD PROFIL HIJAU ── */}
+        <div style={s.profileCard}>
+          <div style={s.avatar}>
+            <span style={s.avatarText}>{avatarInitial}</span>
           </div>
-          <div style={s.quickStatDivider} />
-          <div style={s.quickStatItem}>
-            <span style={s.quickStatNumber}>{stats.since !== '-' ? stats.since.split(' ')[0] : '-'}</span>
-            <span style={s.quickStatLabel}>Mulai Aktif</span>
-          </div>
-          <div style={s.quickStatDivider} />
-          <div style={s.quickStatItem}>
-            <span style={s.quickStatNumber}>{stats.savingRate >= 0 ? 'Sehat' : 'Waspada'}</span>
-            <span style={s.quickStatLabel}>Status Keuangan</span>
-          </div>
-        </div>
 
-        {/* ========== KATEGORI SECTION (BARU) ========== */}
-        <div style={s.categoriesSection}>
-          <div style={s.categoriesHeader}>
-            <h3 style={s.sectionTitle}>
-              <Grid3x3 size={18} />
-              Kelola Kategori
-            </h3>
-            <Link to="/categories" style={s.seeAllLink}>
-              Lihat Semua <ChevronRight size={14} />
-            </Link>
-          </div>
-          
-          {/* Preview Categories */}
-          <div style={s.categoriesPreview}>
-            {previewCategories.length === 0 ? (
-              <div style={s.emptyCategories}>
-                <p style={s.emptyText}>Belum ada kategori</p>
-                <Link to="/categories" style={s.addCategoryLink}>
-                  <Plus size={14} /> Tambah kategori
-                </Link>
-              </div>
-            ) : (
-              <div style={s.categoryChips}>
-                {previewCategories.map(cat => (
-                  <div key={cat.id} style={s.categoryChip}>
-                    <span style={s.categoryChipIcon}>{cat.icon || '📦'}</span>
-                    <span style={s.categoryChipName}>{cat.name}</span>
-                    {cat.is_default && <span style={s.defaultBadge}>Default</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Settings Cards */}
-        <div style={s.settingsSection}>
-          <h3 style={s.sectionTitle}>
-            <Shield size={18} />
-            Pengaturan Akun
-          </h3>
-
-          {/* Change Password Card */}
-          <div style={s.settingCard}>
-            <div style={s.settingCardHeader}>
-              <div style={{ ...s.settingIcon, background: 'var(--green-pale)' }}>
-                <Lock size={18} color="var(--green)" />
-              </div>
-              <div>
-                <p style={s.settingTitle}>Ganti Password</p>
-                <p style={s.settingDesc}>Perbarui kata sandi untuk keamanan akun</p>
-              </div>
-            </div>
-            <form onSubmit={handleUpdatePassword} style={s.passwordForm}>
-              <div style={s.inputGroup}>
-                <input
-                  style={s.input}
-                  type="password"
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  placeholder="Password baru (min. 6 karakter)"
-                  minLength={6}
-                />
-              </div>
-              <div style={s.inputGroup}>
-                <input
-                  style={s.input}
-                  type="password"
-                  value={confirmPassword}
-                  onChange={e => setConfirmPassword(e.target.value)}
-                  placeholder="Konfirmasi password baru"
-                />
-              </div>
-              <button style={s.updateBtn} type="submit" disabled={loading}>
-                <Lock size={14} />
-                {loading ? 'Memproses...' : 'Perbarui Password'}
-              </button>
+          {editingName ? (
+            <form onSubmit={handleUpdateName} style={s.editForm}>
+              <input
+                type="text"
+                value={fullName}
+                onChange={e => setFullName(e.target.value)}
+                style={s.nameInput}
+                autoFocus
+                placeholder="Nama lengkap"
+              />
+              <button type="submit" disabled={loading} style={s.iconBtn}><Check size={15} /></button>
+              <button type="button" onClick={() => { setEditingName(false); setFullName(originalName) }} style={s.iconBtn}><X size={15} /></button>
             </form>
-          </div>
-
-          {/* Account Info Card */}
-          <div style={s.settingCard}>
-            <div style={s.settingCardHeader}>
-              <div style={{ ...s.settingIcon, background: '#f1f5f9' }}>
-                <Mail size={18} color="var(--gray-600)" />
-              </div>
-              <div>
-                <p style={s.settingTitle}>Informasi Akun</p>
-                <p style={s.settingDesc}>Detail akun FinTrack Anda</p>
-              </div>
+          ) : (
+            <div style={s.nameRow}>
+              <h1 style={s.name}>{fullName || 'Pengguna'}</h1>
+              <button onClick={() => setEditingName(true)} style={s.editBtn} title="Edit nama">
+                <Edit size={13} />
+              </button>
             </div>
-            <div style={s.infoList}>
-              <div style={s.infoItem}>
-                <span style={s.infoLabel}>Email</span>
-                <span style={s.infoValue}>{user?.email}</span>
-              </div>
-              <div style={s.infoDivider} />
-              <div style={s.infoItem}>
-                <span style={s.infoLabel}>Transaksi Pertama</span>
-                <span style={s.infoValue}>{stats.since}</span>
-              </div>
+          )}
+
+          <p style={s.metaLine}><Mail size={13} /><span>{user?.email}</span></p>
+          <p style={s.metaLine}><Calendar size={12} /><span>Anggota sejak {joinDate}</span></p>
+        </div>
+
+        {/* ── STATUS KEUANGAN ── */}
+        <div style={{ ...s.statusCard, borderLeftColor: fs.color }}>
+          <div style={{ ...s.statusBadge, background: fs.bg, color: fs.color }}>
+            <fs.Icon size={14} />
+            <span>{fs.label}</span>
+          </div>
+          <p style={s.statusDesc}>{fs.desc}</p>
+          <div style={s.metrics}>
+            <div style={s.metric}>
+              <span style={s.metricLabel}>Pemasukan</span>
+              <span style={{ ...s.metricValue, color: C.primary }}>{formatRp(stats.income)}</span>
+            </div>
+            <div style={s.metricDivider} />
+            <div style={s.metric}>
+              <span style={s.metricLabel}>Pengeluaran</span>
+              <span style={{ ...s.metricValue, color: C.danger }}>{formatRp(stats.expense)}</span>
+            </div>
+            <div style={s.metricDivider} />
+            <div style={s.metric}>
+              <span style={s.metricLabel}>Saving rate</span>
+              <span style={{ ...s.metricValue, color: fs.color }}>{stats.savingRate}%</span>
             </div>
           </div>
         </div>
 
-        {/* Logout Button */}
+        {/* ── RINGKASAN ── */}
+        <p style={s.sectionLabel}>Ringkasan keuangan</p>
+        <div style={s.statsGrid}>
+          <StatCard icon={<TrendingUp size={16} />}  label="Total pemasukan"   value={formatRp(stats.income)}  valueColor={C.primary} />
+          <StatCard icon={<TrendingDown size={16} />} label="Total pengeluaran" value={formatRp(stats.expense)} valueColor={C.danger}  />
+          <StatCard
+            icon={<Award size={16} />}
+            label="Saving rate"
+            value={`${stats.savingRate}%`}
+            valueColor={stats.savingRate >= 20 ? C.primary : stats.savingRate >= 0 ? C.warning : C.danger}
+          />
+          <StatCard icon={<Shield size={16} />} label="Total transaksi" value={String(stats.total)} valueColor={C.text.primary} />
+        </div>
+
+        {/* ── KEAMANAN ── */}
+        <p style={s.sectionLabel}>Keamanan akun</p>
+        <div style={s.card}>
+          <div style={s.cardHead}>
+            <div style={s.cardIcon}><Lock size={16} color={C.text.secondary} /></div>
+            <div>
+              <p style={s.cardTitle}>Ganti password</p>
+              <p style={s.cardDesc}>Gunakan password yang kuat dan unik</p>
+            </div>
+          </div>
+          <form onSubmit={handleUpdatePassword} style={s.form}>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              placeholder="Password baru (min. 6 karakter)"
+              style={s.input}
+            />
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              placeholder="Konfirmasi password"
+              style={s.input}
+            />
+            <button type="submit" disabled={loading} style={s.btnPrimary}>
+              {loading ? 'Memproses...' : 'Perbarui password'}
+            </button>
+          </form>
+        </div>
+
+        {/* ── AKSES CEPAT ── */}
+        <p style={s.sectionLabel}>Akses cepat</p>
+        <div style={s.linkGroup}>
+          <ActionLink to="/categories" icon={<Shield size={16} />}     title="Kelola kategori" desc="Tambah, edit, atau hapus kategori" />
+          <ActionLink to="/budget"     icon={<Award size={16} />}      title="Atur budget"     desc="Tetapkan limit pengeluaran bulanan" border />
+          <ActionLink to="/analytics"  icon={<TrendingUp size={16} />} title="Lihat analitik"  desc="Pantau tren keuangan Anda" />
+        </div>
+
+        {/* ── LOGOUT ── */}
         <button onClick={handleLogout} style={s.logoutBtn}>
-          <LogOut size={16} />
-          Keluar dari FinTrack
+          <LogOut size={15} />
+          Keluar dari akun
         </button>
 
-        {/* Version Footer */}
-        <p style={s.versionText}>FinTrack v1.0 — Kelola keuanganmu lebih cerdas</p>
-      </div>
+        <p style={s.footer}>FinTrack &copy; 2024</p>
+      </main>
     </div>
   )
 }
 
+// ── SUB-COMPONENTS ─────────────────────────────────────────────
+
+function StatCard({ icon, label, value, valueColor }) {
+  return (
+    <div style={s.statCard}>
+      <div style={s.statIcon}>{icon}</div>
+      <p style={s.statLabel}>{label}</p>
+      <p style={{ ...s.statValue, color: valueColor }}>{value}</p>
+    </div>
+  )
+}
+
+function ActionLink({ to, icon, title, desc, border }) {
+  return (
+    <Link to={to} style={{ ...s.linkItem, ...(border ? s.linkItemBorder : {}) }}>
+      <div style={s.linkIcon}>{icon}</div>
+      <div style={s.linkText}>
+        <p style={s.linkTitle}>{title}</p>
+        <p style={s.linkDesc}>{desc}</p>
+      </div>
+      <ChevronRight size={15} color={C.text.muted} />
+    </Link>
+  )
+}
+
+// ── STYLES ──────────────────────────────────────────────────────
 const s = {
   page: {
     minHeight: '100vh',
-    background: 'var(--bg)',
+    background: C.bg.page,
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    color: C.text.primary,
   },
 
-  // Cover Section
-  coverSection: {
-    background: 'linear-gradient(135deg, #1a9e6e 0%, #0d6e4a 100%)',
-    position: 'relative',
-    padding: '32px 20px 48px',
-  },
-  coverOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: 'radial-gradient(circle at 30% 50%, rgba(255,255,255,0.1) 0%, transparent 70%)',
-  },
-  profileHeader: {
-    position: 'relative',
-    zIndex: 2,
-    display: 'flex',
-    alignItems: 'flex-end',
-    gap: '20px',
-    flexWrap: 'wrap',
-    maxWidth: '800px',
-    margin: '0 auto',
+  toast: {
+    position: 'fixed', top: '20px', right: '20px',
+    color: '#fff', padding: '12px 18px', borderRadius: '12px',
+    fontSize: '14px', fontWeight: '500',
+    display: 'flex', alignItems: 'center', gap: '9px',
+    boxShadow: '0 6px 20px rgba(0,0,0,0.18)', zIndex: 100,
   },
 
-  // Avatar
-  avatarContainer: {
-    position: 'relative',
-  },
-  avatar: {
-    width: '100px',
-    height: '100px',
-    borderRadius: '50%',
-    background: 'linear-gradient(135deg, #fff 0%, #f0fdf4 100%)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-    border: '4px solid rgba(255,255,255,0.8)',
-  },
-  avatarEmoji: {
-    fontSize: '48px',
-    fontWeight: '700',
-    color: 'var(--green)',
-  },
-
-  // Profile Info
-  profileInfo: {
-    marginBottom: '8px',
-  },
-  nameRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    flexWrap: 'wrap',
-  },
-  userName: {
-    fontSize: '26px',
-    fontWeight: '700',
-    color: '#fff',
-    letterSpacing: '-0.5px',
-  },
-  editIconBtn: {
-    background: 'rgba(255,255,255,0.2)',
-    border: 'none',
-    borderRadius: '8px',
-    padding: '6px',
-    display: 'flex',
-    alignItems: 'center',
-    cursor: 'pointer',
-    color: '#fff',
-    transition: 'all 0.2s',
-  },
-  editNameForm: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    flexWrap: 'wrap',
-  },
-  editNameInput: {
-    padding: '10px 14px',
-    borderRadius: '12px',
-    border: 'none',
-    fontSize: '16px',
-    fontWeight: '600',
-    width: '200px',
-    outline: 'none',
-  },
-  saveNameBtn: {
-    background: '#fff',
-    border: 'none',
-    borderRadius: '10px',
-    padding: '8px 12px',
-    display: 'flex',
-    alignItems: 'center',
-    cursor: 'pointer',
-    color: 'var(--green)',
-  },
-  cancelEditBtn: {
-    background: 'rgba(255,255,255,0.2)',
-    border: 'none',
-    borderRadius: '10px',
-    padding: '8px 12px',
-    display: 'flex',
-    alignItems: 'center',
-    cursor: 'pointer',
-    color: '#fff',
-  },
-  userEmail: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    fontSize: '13px',
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: '8px',
-  },
-  userSince: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    fontSize: '12px',
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: '4px',
-  },
-
-  // Toast Notifications
-  toastSuccess: {
-    position: 'fixed',
-    top: '80px',
-    right: '20px',
-    background: 'var(--green)',
-    color: '#fff',
-    padding: '12px 20px',
-    borderRadius: '12px',
-    fontSize: '13px',
-    fontWeight: '500',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-    zIndex: 100,
-    animation: 'slideIn 0.3s ease',
-  },
-  toastError: {
-    position: 'fixed',
-    top: '80px',
-    right: '20px',
-    background: 'var(--red)',
-    color: '#fff',
-    padding: '12px 20px',
-    borderRadius: '12px',
-    fontSize: '13px',
-    fontWeight: '500',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-    zIndex: 100,
-    animation: 'slideIn 0.3s ease',
-  },
-
-  // Content
   content: {
-    maxWidth: '800px',
-    margin: '-30px auto 0',
-    padding: '0 20px 40px',
-    position: 'relative',
-    zIndex: 3,
+    maxWidth: '640px',
+    margin: '0 auto',
+    padding: '24px 20px 48px',
   },
 
-  // Stats Grid
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '12px',
+  // ── Card profil — hijau, sudut melengkung ──
+  profileCard: {
+    background: `linear-gradient(135deg, ${C.primary} 0%, #0d7a55 100%)`,
+    borderRadius: '28px',          // sudut melengkung
+    padding: '32px 24px 28px',
     marginBottom: '20px',
-  },
-  statCard: {
-    background: 'var(--white)',
-    borderRadius: 'var(--radius-md)',
-    padding: '16px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '14px',
-    boxShadow: 'var(--shadow-sm)',
-    border: '1px solid var(--border)',
-  },
-  statIcon: {
-    width: '44px',
-    height: '44px',
-    borderRadius: '14px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statLabel: {
-    fontSize: '11px',
-    color: 'var(--gray-500)',
-    marginBottom: '4px',
-  },
-  statValue: {
-    fontSize: '16px',
-    fontWeight: '700',
-  },
-
-  // Quick Stats
-  quickStats: {
-    background: 'var(--white)',
-    borderRadius: 'var(--radius-md)',
-    padding: '16px 20px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '28px',
-    border: '1px solid var(--border)',
-  },
-  quickStatItem: {
-    textAlign: 'center',
-    flex: 1,
-  },
-  quickStatNumber: {
-    fontSize: '20px',
-    fontWeight: '700',
-    color: 'var(--gray-800)',
-    display: 'block',
-  },
-  quickStatLabel: {
-    fontSize: '11px',
-    color: 'var(--gray-400)',
-    marginTop: '4px',
-  },
-  quickStatDivider: {
-    width: '1px',
-    height: '30px',
-    background: 'var(--border)',
-  },
-
-  // ========== KATEGORI SECTION STYLES (BARU) ==========
-  categoriesSection: {
-    background: 'var(--white)',
-    borderRadius: 'var(--radius-md)',
-    padding: '18px 20px',
-    marginBottom: '28px',
-    border: '1px solid var(--border)',
-  },
-  categoriesHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '16px',
-  },
-  seeAllLink: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    fontSize: '12px',
-    color: 'var(--green)',
-    textDecoration: 'none',
-  },
-  categoriesPreview: {
-    display: 'flex',
-    flexWrap: 'wrap',
-  },
-  categoryChips: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '10px',
-  },
-  categoryChip: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '6px 12px',
-    background: 'var(--gray-100)',
-    borderRadius: '20px',
-    fontSize: '13px',
-  },
-  categoryChipIcon: {
-    fontSize: '14px',
-  },
-  categoryChipName: {
-    color: 'var(--gray-700)',
-  },
-  defaultBadge: {
-    fontSize: '9px',
-    padding: '2px 6px',
-    background: '#e2e8f0',
-    borderRadius: '10px',
-    color: 'var(--gray-500)',
-  },
-  emptyCategories: {
-    textAlign: 'center',
-    padding: '16px',
-    width: '100%',
-  },
-  emptyText: {
-    fontSize: '13px',
-    color: 'var(--gray-400)',
-    marginBottom: '8px',
-  },
-  addCategoryLink: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '6px',
-    fontSize: '12px',
-    color: 'var(--green)',
-    textDecoration: 'none',
-  },
-
-  // Settings Section
-  settingsSection: {
-    marginBottom: '24px',
-  },
-  sectionTitle: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    fontSize: '16px',
-    fontWeight: '700',
-    color: 'var(--gray-800)',
-    marginBottom: '16px',
-  },
-
-  settingCard: {
-    background: 'var(--white)',
-    borderRadius: 'var(--radius-md)',
-    padding: '20px',
-    marginBottom: '16px',
-    border: '1px solid var(--border)',
-    transition: 'all 0.2s',
-  },
-  settingCardHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '14px',
-    marginBottom: '16px',
-  },
-  settingIcon: {
-    width: '44px',
-    height: '44px',
-    borderRadius: '14px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingTitle: {
-    fontSize: '15px',
-    fontWeight: '700',
-    color: 'var(--gray-800)',
-  },
-  settingDesc: {
-    fontSize: '12px',
-    color: 'var(--gray-400)',
-    marginTop: '2px',
-  },
-
-  // Password Form
-  passwordForm: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '12px',
-  },
-  inputGroup: {
-    width: '100%',
-  },
-  input: {
-    width: '100%',
-    padding: '12px 14px',
-    borderRadius: 'var(--radius-sm)',
-    border: '1.5px solid var(--border)',
-    fontSize: '14px',
-    outline: 'none',
-    background: 'var(--gray-50)',
-    transition: 'border 0.2s',
-  },
-  updateBtn: {
-    display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    padding: '12px',
-    borderRadius: 'var(--radius-sm)',
-    background: 'var(--green)',
-    color: '#fff',
-    border: 'none',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    marginTop: '4px',
-  },
-
-  // Info List
-  infoList: {
-    marginTop: '4px',
-  },
-  infoItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '12px 0',
-  },
-  infoDivider: {
-    height: '1px',
-    background: 'var(--border)',
-  },
-  infoLabel: {
-    fontSize: '13px',
-    color: 'var(--gray-500)',
-  },
-  infoValue: {
-    fontSize: '13px',
-    fontWeight: '600',
-    color: 'var(--gray-800)',
-  },
-
-  // Logout Button
-  logoutBtn: {
-    width: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    padding: '14px',
-    borderRadius: 'var(--radius-md)',
-    background: '#fff',
-    border: '1.5px solid var(--border)',
-    fontSize: '14px',
-    fontWeight: '600',
-    color: 'var(--red)',
-    cursor: 'pointer',
-    marginTop: '8px',
-    transition: 'all 0.2s',
-  },
-
-  // Version
-  versionText: {
     textAlign: 'center',
-    fontSize: '11px',
-    color: 'var(--gray-400)',
-    marginTop: '24px',
   },
-}
+  avatar: {
+    width: '76px', height: '76px', borderRadius: '50%',
+    background: 'rgba(255,255,255,0.2)',
+    border: '3px solid rgba(255,255,255,0.55)',
+    display: 'flex', alignItems: 'center',
+    justifyContent: 'center', marginBottom: '16px',
+    flexShrink: 0,
+  },
+  avatarText: { fontSize: '30px', fontWeight: '700', color: '#fff' },
 
-// Add animations
-const styleSheet = document.createElement('style')
-styleSheet.textContent = `
-  @keyframes slideIn {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
-  
-  input:focus {
-    border-color: var(--green) !important;
-  }
-  
-  button:hover {
-    opacity: 0.9;
-    transform: translateY(-1px);
-  }
-`
-document.head.appendChild(styleSheet)
+  nameRow: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' },
+  name: { fontSize: '20px', fontWeight: '700', color: '#fff', margin: 0 },
+  editBtn: {
+    background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px',
+    padding: '5px', display: 'flex', alignItems: 'center',
+    cursor: 'pointer', color: '#fff',
+  },
+  editForm: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' },
+  nameInput: {
+    padding: '8px 14px', borderRadius: '10px', border: 'none',
+    fontSize: '15px', fontWeight: '600', outline: 'none',
+    background: 'rgba(255,255,255,0.97)', color: C.text.primary,
+    minWidth: '180px',
+  },
+  iconBtn: {
+    background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px',
+    padding: '6px', display: 'flex', alignItems: 'center',
+    cursor: 'pointer', color: '#fff',
+  },
+  metaLine: {
+    display: 'flex', alignItems: 'center', gap: '7px',
+    fontSize: '13px', color: 'rgba(255,255,255,0.85)',
+    margin: '4px 0 0', justifyContent: 'center',
+  },
+
+  // Status card
+  statusCard: {
+    background: C.bg.card,
+    borderRadius: '16px',
+    padding: '18px',
+    borderLeft: '4px solid',
+    border: `1px solid ${C.bg.border}`,
+    marginBottom: '20px',
+  },
+  statusBadge: {
+    display: 'inline-flex', alignItems: 'center', gap: '6px',
+    padding: '4px 10px', borderRadius: '20px',
+    fontSize: '12px', fontWeight: '600', marginBottom: '8px',
+  },
+  statusDesc: { fontSize: '13px', color: C.text.secondary, margin: '0 0 14px' },
+  metrics: {
+    display: 'flex', alignItems: 'center',
+    borderTop: `1px dashed ${C.bg.border}`, paddingTop: '14px',
+  },
+  metric: { flex: 1, textAlign: 'center' },
+  metricLabel: { display: 'block', fontSize: '11px', color: C.text.muted, marginBottom: '4px' },
+  metricValue: { fontSize: '14px', fontWeight: '700' },
+  metricDivider: { width: '1px', height: '28px', background: C.bg.border },
+
+  sectionLabel: {
+    fontSize: '12px', fontWeight: '600', color: C.text.muted,
+    textTransform: 'uppercase', letterSpacing: '0.06em',
+    margin: '0 0 12px',
+  },
+
+  statsGrid: {
+    display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '12px', marginBottom: '20px',
+  },
+  statCard: {
+    background: C.bg.card, borderRadius: '14px',
+    padding: '16px', border: `1px solid ${C.bg.border}`,
+  },
+  statIcon: {
+    width: '34px', height: '34px', borderRadius: '10px',
+    background: C.bg.subtle, display: 'flex',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: '10px', color: C.text.secondary,
+  },
+  statLabel: { fontSize: '12px', color: C.text.secondary, margin: '0 0 4px' },
+  statValue: { fontSize: '15px', fontWeight: '700', margin: 0 },
+
+  card: {
+    background: C.bg.card, borderRadius: '16px',
+    padding: '20px', border: `1px solid ${C.bg.border}`,
+    marginBottom: '20px',
+  },
+  cardHead: { display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '18px' },
+  cardIcon: {
+    width: '40px', height: '40px', borderRadius: '12px',
+    background: C.bg.subtle, display: 'flex',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  cardTitle: { fontSize: '14px', fontWeight: '600', margin: '0 0 3px' },
+  cardDesc:  { fontSize: '12px', color: C.text.secondary, margin: 0 },
+
+  form: { display: 'flex', flexDirection: 'column', gap: '12px' },
+  input: {
+    width: '100%', padding: '12px 16px', borderRadius: '12px',
+    border: `1.5px solid ${C.bg.border}`, fontSize: '14px',
+    outline: 'none', background: C.bg.subtle,
+    color: C.text.primary, boxSizing: 'border-box',
+  },
+  btnPrimary: {
+    width: '100%', padding: '13px', borderRadius: '12px',
+    background: C.primary, color: '#fff', border: 'none',
+    fontSize: '14px', fontWeight: '600', cursor: 'pointer',
+  },
+
+  linkGroup: {
+    background: C.bg.card, borderRadius: '16px',
+    border: `1px solid ${C.bg.border}`, overflow: 'hidden',
+    marginBottom: '16px',
+  },
+  linkItem: {
+    display: 'flex', alignItems: 'center', gap: '14px',
+    padding: '16px 18px', textDecoration: 'none', color: 'inherit',
+  },
+  linkItemBorder: {
+    borderTop:    `1px solid ${C.bg.border}`,
+    borderBottom: `1px solid ${C.bg.border}`,
+  },
+  linkIcon: {
+    width: '38px', height: '38px', borderRadius: '10px',
+    background: C.bg.subtle, display: 'flex',
+    alignItems: 'center', justifyContent: 'center',
+    color: C.text.secondary, flexShrink: 0,
+  },
+  linkText: { flex: 1 },
+  linkTitle: { fontSize: '14px', fontWeight: '600', margin: '0 0 3px' },
+  linkDesc:  { fontSize: '12px', color: C.text.secondary, margin: 0 },
+
+  logoutBtn: {
+    width: '100%', padding: '14px', borderRadius: '12px',
+    background: C.bg.card, border: `1.5px solid ${C.danger}`,
+    color: C.danger, fontSize: '14px', fontWeight: '600',
+    cursor: 'pointer', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', gap: '8px',
+  },
+
+  footer: { textAlign: 'center', fontSize: '12px', color: C.text.muted, marginTop: '28px' },
+}
