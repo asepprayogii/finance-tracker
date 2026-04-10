@@ -25,10 +25,24 @@ export default function Budget() {
     const endDate = `${selectedMonth}-${String(lastDay).padStart(2, "0")}`;
 
     const [catRes, budgetRes, trxRes] = await Promise.all([
-      supabase.from("categories").select("*").eq("user_id", uid).eq("type", "expense"),
+      // ✅ FIX: Gunakan .or() untuk ambil user categories + default categories
+      supabase.from("categories")
+        .select("*")
+        .or(`user_id.eq.${uid},is_default.eq.true`)
+        .eq("type", "expense")
+        .order("is_default", { ascending: false })
+        .order("name", { ascending: true }),
+      
       supabase.from("budgets").select("*").eq("user_id", uid).eq("month", selectedMonth),
-      supabase.from("transactions").select("id, amount, category_id, type, date").eq("user_id", uid).eq("type", "expense").gte("date", startDate).lte("date", endDate),
+      
+      supabase.from("transactions")
+        .select("id, amount, category_id, type, date")
+        .eq("user_id", uid)
+        .eq("type", "expense")
+        .gte("date", startDate)
+        .lte("date", endDate),
     ]);
+    
     setCategories(catRes.data || []);
     setBudgets(budgetRes.data || []);
     setTransactions(trxRes.data || []);
@@ -39,20 +53,59 @@ export default function Budget() {
     if (!editAmount || parseFloat(editAmount) <= 0) return;
     const { data: userData } = await supabase.auth.getUser();
     const existing = budgets.find((b) => b.category_id === categoryId);
-    if (existing) await supabase.from("budgets").update({ amount: parseFloat(editAmount) }).eq("id", existing.id);
-    else await supabase.from("budgets").insert({ user_id: userData.user.id, category_id: categoryId, amount: parseFloat(editAmount), month: selectedMonth });
-    setEditingId(null); setEditAmount(""); fetchAll();
+    
+    if (existing) {
+      await supabase.from("budgets")
+        .update({ amount: parseFloat(editAmount) })
+        .eq("id", existing.id);
+    } else {
+      await supabase.from("budgets").insert({ 
+        user_id: userData.user.id, 
+        category_id: categoryId, 
+        amount: parseFloat(editAmount), 
+        month: selectedMonth 
+      });
+    }
+    setEditingId(null); 
+    setEditAmount(""); 
+    fetchAll();
   }
 
   const cancelEdit = () => { setEditingId(null); setEditAmount(""); };
 
-  const formatRupiah = (amt) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(amt);
-  const getSpent = (id) => transactions.filter((t) => t.category_id === id).reduce((s, t) => s + t.amount, 0);
-  const getBudget = (id) => budgets.find((b) => b.category_id === id)?.amount || 0;
-  const getStatus = (spent, budget) => budget === 0 ? "none" : (spent / budget) * 100 >= 100 ? "over" : (spent / budget) * 100 >= 80 ? "warning" : "safe";
+  const formatRupiah = (amt) => new Intl.NumberFormat("id-ID", { 
+    style: "currency", 
+    currency: "IDR", 
+    minimumFractionDigits: 0 
+  }).format(amt);
   
-  const statusColor = { safe: "var(--green)", warning: "#f59e0b", over: "var(--red)", none: "var(--gray-300)" };
-  const statusBg = { safe: "rgba(82,183,136,0.1)", warning: "rgba(245,158,11,0.1)", over: "rgba(229,62,62,0.1)", none: "rgba(148,163,184,0.05)" };
+  const getSpent = (id) => transactions
+    .filter((t) => t.category_id === id)
+    .reduce((s, t) => s + t.amount, 0);
+  
+  const getBudget = (id) => budgets.find((b) => b.category_id === id)?.amount || 0;
+  
+  const getStatus = (spent, budget) => {
+    if (budget === 0) return "none";
+    const pct = (spent / budget) * 100;
+    if (pct >= 100) return "over";
+    if (pct >= 80) return "warning";
+    return "safe";
+  };
+  
+  const statusColor = { 
+    safe: "var(--green)", 
+    warning: "#f59e0b", 
+    over: "var(--red)", 
+    none: "var(--gray-300)" 
+  };
+  
+  const statusBg = { 
+    safe: "rgba(82,183,136,0.1)", 
+    warning: "rgba(245,158,11,0.1)", 
+    over: "rgba(229,62,62,0.1)", 
+    none: "rgba(148,163,184,0.05)" 
+  };
 
   if (loading) return <div style={s.loading}>Memuat...</div>;
   
